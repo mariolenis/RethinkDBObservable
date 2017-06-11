@@ -27,7 +27,7 @@ public class Test {
         config.host = "http://<your-ip>";
         config.port = <your-port>;
         
-        RethinkDBObservable<Mensaje> message = new RethinkDBObservable(config, null, Mensaje.class);
+        RethinkDBObservable<Message> message = new RethinkDBObservable(config, null, Message.class);
         message.subscribe(msg -> {
             System.out.println("msg = " + msg.toString());
             if (msg.size() > 3)
@@ -37,10 +37,10 @@ public class Test {
 }
 
 
-class Mensaje extends RethinkDBObject {
+class Message extends RethinkDBObject {
     String name, msg, date;
     
-    public Mensaje() {
+    public Message() {
         super();
     }
     
