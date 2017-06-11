@@ -26,7 +26,6 @@ public class Test {
             if (msg.size() > 3)
                 System.out.println("msg.get(2) = " + msg.get(2).toString());
         });
-        
     }
 }
 
