@@ -168,7 +168,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
     }
     //</editor-fold>
     
-    //<editor-fold defaultstate="collapsed" desc="private Observable<ArrayList<T>> queryDB (RethinkDBQuery query)">
+    //<editor-fold defaultstate="collapsed" desc="private Observable<ArrayList<T>> queryDB(RethinkDBQuery query)">
     private Observable<ArrayList<T>> queryDB(RethinkDBQuery query) {
         return Observable.just(query)
             .map(_query -> {
@@ -179,7 +179,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
                 body.put("query", _query.toString());
                 return body;
             })
-            .flatMap(body -> httpRequest$(API_URL + "/api/list", body))
+            .flatMap(body -> httpRequest(API_URL + "/api/list", body))
             .map(response -> {
                 InputStream is = response.getEntity().getContent();
                 String predata = IOUtils.toString(is, "UTF-8");
@@ -200,13 +200,16 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
                 body.put("object", _object.toString());
                 return body;
             })
-            .flatMap(body -> httpRequest(API_URL + "/api/put", body));        
+            .flatMap(body -> httpRequest(API_URL + "/api/put", body))
+            .map(response -> {
+                InputStream is = response.getEntity().getContent();
+                return IOUtils.toString(is, "UTF-8");
+            });
     }
     //</editor-fold>
     
     //<editor-fold defaultstate="collapsed" desc="public Observable<String> update(T object)">
     public Observable<String> update(T object) {
-        
         return Observable.just(object)
             .map(_object -> {
                 Map body = new HashMap();
@@ -216,7 +219,11 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
                 body.put("object", _object.toString());
                 return body;
             })
-            .flatMap(body -> httpRequest(API_URL + "/api/update", body));
+            .flatMap(body -> httpRequest(API_URL + "/api/update", body))
+            .map(response -> {
+                InputStream is = response.getEntity().getContent();
+                return IOUtils.toString(is, "UTF-8");
+            });
     }
     //</editor-fold>
     
@@ -232,22 +239,30 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
                 body.put("query", query.toString());
                 return body;
             })
-            .flatMap(body -> httpRequest(API_URL + "/api/update", body));        
+            .flatMap(body -> httpRequest(API_URL + "/api/update", body))
+            .map(response -> {
+                InputStream is = response.getEntity().getContent();
+                return IOUtils.toString(is, "UTF-8");
+            });
     }
     //</editor-fold>
     
     //<editor-fold defaultstate="collapsed" desc="public Observable<String> remove(String index)">
     public Observable<String> remove(String index) {
         return Observable.just(index)
-                .map(indexValue -> {
-                    Map body = new HashMap();
-                    body.put("db", config.database);
-                    body.put("table", config.table);
-                    body.put("api_key", config.api_key);
-                    body.put("query", "{\"id\":\""+ indexValue +"\"}");
-                    return body;
-                })
-                .flatMap(body -> httpRequest(API_URL + "/api/delete", body));
+            .map(indexValue -> {
+                Map body = new HashMap();
+                body.put("db", config.database);
+                body.put("table", config.table);
+                body.put("api_key", config.api_key);
+                body.put("query", "{\"id\":\""+ indexValue +"\"}");
+                return body;
+            })
+            .flatMap(body -> httpRequest(API_URL + "/api/delete", body))
+            .map(response -> {
+                InputStream is = response.getEntity().getContent();
+                return IOUtils.toString(is, "UTF-8");
+            });
     }
     //</editor-fold>
     
@@ -265,41 +280,16 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
                 body.put("query", JSON.parseMapToString(_map));
                 return body;
             })
-            .flatMap(body -> httpRequest(API_URL + "/api/delete", body));
+            .flatMap(body -> httpRequest(API_URL + "/api/delete", body))
+            .map(response -> {
+                InputStream is = response.getEntity().getContent();
+                return IOUtils.toString(is, "UTF-8");
+            });
     }
     //</editor-fold>
     
     //<editor-fold defaultstate="collapsed" desc="private Observable<String> httpRequest(String URL, Map body)">
-    private Observable<String> httpRequest(String URL, Map body) {
-        return Observable.create(obs -> {
-            try {
-                CloseableHttpClient client = HttpClients.createDefault();
-                HttpPost httpPost = new HttpPost(URL);
-                
-                httpPost.setHeader("Accept", "application/json, text/plain, */*");
-                httpPost.setHeader("Content-type", "application/json");
-                
-                StringEntity params = new StringEntity(JSON.parseMapToString(body));
-                httpPost.setEntity(params);
-                
-                CloseableHttpResponse response = client.execute(httpPost);
-                InputStream is = response.getEntity().getContent();
-                String predata = IOUtils.toString(is, "UTF-8");
-                obs.onNext(predata);
-                
-                client.close();
-                obs.onComplete();
-            } catch (UnsupportedEncodingException ex) {
-                Logger.getLogger(RethinkDBObservable.class.getName()).log(Level.SEVERE, null, ex);
-            } catch (IOException ex) {
-                Logger.getLogger(RethinkDBObservable.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        });
-    }
-    //</editor-fold>
-    
-    //<editor-fold defaultstate="collapsed" desc="private Observable<String> httpRequest$(String URL, Map body)">
-    private Observable<CloseableHttpResponse> httpRequest$(String URL, Map body) {
+    private Observable<CloseableHttpResponse> httpRequest(String URL, Map body) {
         return Observable.create(obs -> {
             try {
                 CloseableHttpClient client = HttpClients.createDefault();
