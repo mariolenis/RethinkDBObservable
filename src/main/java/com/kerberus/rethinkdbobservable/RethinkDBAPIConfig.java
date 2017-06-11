@@ -10,7 +10,7 @@ package com.kerberus.rethinkdbobservable;
  * @author kerberus
  */
 public class RethinkDBAPIConfig {
-    String host, database, api_key;
+    String host, database, api_key, table;
     int port;    
     
     public RethinkDBAPIConfig() {

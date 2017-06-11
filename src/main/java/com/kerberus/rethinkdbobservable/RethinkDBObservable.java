@@ -4,6 +4,9 @@ package com.kerberus.rethinkdbobservable;
  * @author Jorge Mario Lenis
  */
 import io.reactivex.Observable;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.Action;
+import io.reactivex.functions.Consumer;
 import io.reactivex.subjects.BehaviorSubject;
 import io.socket.client.Ack;
 import io.socket.client.IO;
@@ -15,57 +18,79 @@ import java.io.UnsupportedEncodingException;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.apache.commons.io.IOUtils;
-import org.apache.http.NameValuePair;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
-import org.apache.http.message.BasicNameValuePair;
 
 public class RethinkDBObservable<T extends RethinkDBObject> {
     
     private final BehaviorSubject<ArrayList<T>> db$;
     private final String API_URL;
     private final RethinkDBAPIConfig config;
-    private final String table;
+    private final Class parseableClass;
     
-    public RethinkDBObservable( RethinkDBAPIConfig config, String table, BehaviorSubject<RethinkDBQuery> query$ ) {
+    private Disposable subscription;
+    
+    // TODO: Get clasd from Generic T
+    public RethinkDBObservable( 
+            RethinkDBAPIConfig config, 
+            BehaviorSubject<RethinkDBQuery> query$, 
+            Class parseableClass
+    ) {
         
-        this.config     = config;
-        this.table      = table;
-        this.db$        = BehaviorSubject.createDefault(new ArrayList<>());
-        this.API_URL    = (config.host != null ? config.host : "")  + (config.port > -1 ? ":" + config.port : "");
+        this.config         = config;
+        this.parseableClass = parseableClass;
+        this.db$            = BehaviorSubject.createDefault(new ArrayList<>());
+        this.API_URL        = (config.host != null ? config.host : "")  + (config.port > -1 ? ":" + config.port : "");
         
-        try {            
-            Socket socket = IO.socket(API_URL);
-            initSocketIO(socket)
+        try {
+            // Creates a namespace to listen events and populate db$ with new data triggered by filter observable            
+            Socket socket = IO.socket(API_URL).connect();
+            
+            subscription = initSocketIO(socket)
+                    
+                // Start the listener from backend, also if gets disconnected and reconnected, emits message to refresh the query
                 .flatMap(nsp -> listenFromBackend(nsp))
-                .flatMap(msg -> (query$ != null ? query$ : Observable.just(null)))
+
+                // If query$ has next value, will trigger a new query without modifying the subscription filter in backend
+                .flatMap(msg -> (query$ != null ? query$ : Observable.just(new RethinkDBQuery(-1, null, null))))
+                    
+                // Register the change's listener
                 .switchMap(query -> registerListener(socket, query))
+                    
+                // Executes the query 
                 .switchMap(query -> queryDB(query))
+                    
+                // Append the result to the next BehaviorSubject Observer  
                 .subscribe(
-                        data -> System.out.println("data = " + data),
+                        data -> db$.onNext(data),
                         err -> System.err.println(err)
                 );
+            
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                if (subscription != null && !subscription.isDisposed())
+                    subscription.dispose();
+            }));
             
         } catch (URISyntaxException ex) {
             Logger.getLogger(RethinkDBObservable.class.getName()).log(Level.SEVERE, null, ex);
         }
-    }
+    }    
     
+    //<editor-fold defaultstate="collapsed" desc="private Observable<Socket> initSocketIO(Socket socket)">
     private Observable<Socket> initSocketIO(Socket socket) {
         return Observable.create(o -> {
             Map localConfig = new HashMap();
             localConfig.put("db", config.database);
-            localConfig.put("table", table);
+            localConfig.put("table", config.table);
             localConfig.put("api_key", config.api_key);
-
+            
             socket.emit("join", JSON.parseMapToString(localConfig), new Ack() {
                 @Override
                 public void call(Object... args) {
@@ -76,11 +101,11 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
                     o.onComplete();
                 }
             });
-            o.onNext(socket);
-            o.onComplete();
-        });        
+        });
     }
+    //</editor-fold>
     
+    //<editor-fold defaultstate="collapsed" desc="private Observable<String> listenFromBackend(Socket nsp)">
     private Observable<String> listenFromBackend(Socket nsp) {
         
         return Observable.create(o -> {
@@ -90,76 +115,178 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
                     o.onNext(String.valueOf(os[os.length - 1]));
                 }
             });
-
-            nsp.on(table, new Emitter.Listener() {
+            
+            nsp.on(config.table, new Emitter.Listener() {
                 @Override
                 public void call(Object... os) {
-
+                    
                     String predata = String.valueOf(os[os.length - 1]);
-                    System.out.println("predata = " + predata);
-                    Map<String, T> data = JSON.<T>parseStringToGenericMap(predata);
-
+                    Map<String, T> data = JSON.<T>parseStringToGenericMap(predata, parseableClass);
+                    
                     // Current state
-                    ArrayList<T> db = db$.getValue();
-
-                    if (data.get("old_val") == null && data.get("new_val") != null) {                            
+                    ArrayList<T> db = new ArrayList<>(db$.getValue());
+                    
+                    // New data
+                    if (data.get("old_val") == null && data.get("new_val") != null) {
                         db.add(data.get("new_val"));
                         db$.onNext(db);
                     }
-
-                    else if (data.get("old_val") != null && data.get("new_val") != null) {                            
-                        db.removeIf(object -> object.id == data.get("old_val").id);
+                    
+                    // Update data
+                    else if (data.get("old_val") != null && data.get("new_val") != null) {
+                        db.removeIf(object -> object.id.equals(data.get("old_val").id));
                         db.add(data.get("new_val"));
                         db$.onNext(db);
                     }
-
+                    
+                    // Delete data
                     else if (data.get("old_val") != null && data.get("new_val") == null) {
-                        db.removeIf(object -> object.id == data.get("old_val").id);
+                        db.removeIf(object -> object.id.equals(data.get("old_val").id));
                         db$.onNext(db);
                     }
                 }
             });
-        });        
+            
+            o.onNext("Start");            
+        });
     }
+    //</editor-fold>
     
+    //<editor-fold defaultstate="collapsed" desc="private Observable<RethinkDBQuery> registerListener(Socket socket, RethinkDBQuery query)">
     private Observable<RethinkDBQuery> registerListener(Socket socket, RethinkDBQuery query) {
         return Observable.create(obs -> {
             Map<String, String> changeConfig = new HashMap<>();
             changeConfig.put("db", config.database);
-            changeConfig.put("table", table);
-            changeConfig.put("query", query.toString());
-
+            changeConfig.put("table", config.table);
+            if (query != null)
+                changeConfig.put("query", query.toString());
+            
             socket.emit("listenChanges", JSON.parseMapToString(changeConfig));
             obs.onNext(query);
             obs.onComplete();
-        });        
+        });
     }
+    //</editor-fold>
     
-    private Observable<ArrayList<T>> queryDB (RethinkDBQuery query) {
+    //<editor-fold defaultstate="collapsed" desc="private Observable<ArrayList<T>> queryDB (RethinkDBQuery query)">
+    private Observable<ArrayList<T>> queryDB(RethinkDBQuery query) {
+        return Observable.just(query)
+            .map(_query -> {
+                Map body = new HashMap();
+                body.put("db", config.database);
+                body.put("table", config.table);
+                body.put("api_key", config.api_key);
+                body.put("query", _query.toString());
+                return body;
+            })
+            .flatMap(body -> httpRequest$(API_URL + "/api/list", body))
+            .map(response -> {
+                InputStream is = response.getEntity().getContent();
+                String predata = IOUtils.toString(is, "UTF-8");
+                return JSON.<T>parseStringToGenericArrayList(predata, parseableClass);
+            });
+    }
+    //</editor-fold>
+    
+    //<editor-fold defaultstate="collapsed" desc="public Observable<String> push(T object)">
+    public Observable<String> push(T object) {
+        
+        return Observable.just(object)
+            .map(_object -> {
+                Map body = new HashMap();
+                body.put("db", config.database);
+                body.put("table", config.table);
+                body.put("api_key", config.api_key);
+                body.put("object", _object.toString());
+                return body;
+            })
+            .flatMap(body -> httpRequest(API_URL + "/api/put", body));        
+    }
+    //</editor-fold>
+    
+    //<editor-fold defaultstate="collapsed" desc="public Observable<String> update(T object)">
+    public Observable<String> update(T object) {
+        
+        return Observable.just(object)
+            .map(_object -> {
+                Map body = new HashMap();
+                body.put("db", config.database);
+                body.put("table", config.table);
+                body.put("api_key", config.api_key);
+                body.put("object", _object.toString());
+                return body;
+            })
+            .flatMap(body -> httpRequest(API_URL + "/api/update", body));
+    }
+    //</editor-fold>
+    
+    //<editor-fold defaultstate="collapsed" desc="public Observable<String> update(T object, RethinkDBQuery query)">
+    public Observable<String> update(T object, RethinkDBQuery query) {
+        return Observable.just(object)
+            .map(_object -> {
+                Map body = new HashMap();
+                body.put("db", config.database);
+                body.put("table", config.table);
+                body.put("api_key", config.api_key);
+                body.put("object", _object.toString());
+                body.put("query", query.toString());
+                return body;
+            })
+            .flatMap(body -> httpRequest(API_URL + "/api/update", body));        
+    }
+    //</editor-fold>
+    
+    //<editor-fold defaultstate="collapsed" desc="public Observable<String> remove(String index)">
+    public Observable<String> remove(String index) {
+        return Observable.just(index)
+                .map(indexValue -> {
+                    Map body = new HashMap();
+                    body.put("db", config.database);
+                    body.put("table", config.table);
+                    body.put("api_key", config.api_key);
+                    body.put("query", "{\"id\":\""+ indexValue +"\"}");
+                    return body;
+                })
+                .flatMap(body -> httpRequest(API_URL + "/api/delete", body));
+    }
+    //</editor-fold>
+    
+    //<editor-fold defaultstate="collapsed" desc="public Observable<String> remove(String index, String indexValue)">
+    public Observable<String> remove(String index, String indexValue) {
+        Map<String, String> indexMap = new HashMap<>();
+        indexMap.put(index, indexValue);
+        
+        return Observable.just(indexMap)
+            .map(_map -> {
+                Map body = new HashMap();
+                body.put("db", config.database);
+                body.put("table", config.table);
+                body.put("api_key", config.api_key);
+                body.put("query", JSON.parseMapToString(_map));
+                return body;
+            })
+            .flatMap(body -> httpRequest(API_URL + "/api/delete", body));
+    }
+    //</editor-fold>
+    
+    //<editor-fold defaultstate="collapsed" desc="private Observable<String> httpRequest(String URL, Map body)">
+    private Observable<String> httpRequest(String URL, Map body) {
         return Observable.create(obs -> {
             try {
                 CloseableHttpClient client = HttpClients.createDefault();
-                HttpPost httpPost = new HttpPost(API_URL + "/api/list");
-
+                HttpPost httpPost = new HttpPost(URL);
+                
                 httpPost.setHeader("Accept", "application/json, text/plain, */*");
                 httpPost.setHeader("Content-type", "application/json");
-
-                List<NameValuePair> params = new ArrayList<>();
-                params.add(new BasicNameValuePair("db", config.database));
-                params.add(new BasicNameValuePair("table", table));
-                params.add(new BasicNameValuePair("api_key", config.api_key));
-                params.add(new BasicNameValuePair("query", query.toString()));
-
-                httpPost.setEntity(new UrlEncodedFormEntity(params));
-
+                
+                StringEntity params = new StringEntity(JSON.parseMapToString(body));
+                httpPost.setEntity(params);
+                
                 CloseableHttpResponse response = client.execute(httpPost);
                 InputStream is = response.getEntity().getContent();
-                String predata = IOUtils.toString(is, "UTF-8"); 
-                System.out.println("predata = " + predata);
-
-                ArrayList<T> dataResult = JSON.<T>parseStringToArrayList(predata);
-                obs.onNext(dataResult);
-
+                String predata = IOUtils.toString(is, "UTF-8");
+                obs.onNext(predata);
+                
                 client.close();
                 obs.onComplete();
             } catch (UnsupportedEncodingException ex) {
@@ -169,4 +296,61 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
             }
         });
     }
+    //</editor-fold>
+    
+    //<editor-fold defaultstate="collapsed" desc="private Observable<String> httpRequest$(String URL, Map body)">
+    private Observable<CloseableHttpResponse> httpRequest$(String URL, Map body) {
+        return Observable.create(obs -> {
+            try {
+                CloseableHttpClient client = HttpClients.createDefault();
+                HttpPost httpPost = new HttpPost(URL);
+                
+                httpPost.setHeader("Accept", "application/json, text/plain, */*");
+                httpPost.setHeader("Content-type", "application/json");
+                
+                StringEntity params = new StringEntity(JSON.parseMapToString(body));
+                httpPost.setEntity(params);                
+                
+                obs.onNext(client.execute(httpPost));                
+                client.close();
+                obs.onComplete();
+                
+            } catch (UnsupportedEncodingException ex) {
+                Logger.getLogger(RethinkDBObservable.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (IOException ex) {
+                Logger.getLogger(RethinkDBObservable.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        });
+    }
+    //</editor-fold>
+        
+    //<editor-fold defaultstate="collapsed" desc="public Disposable subscribe(onNext, onError, onComplete)">
+    /**
+     * 
+     * @param onNext
+     * @return Disposable
+     */
+    public Disposable subscribe(Consumer<? super ArrayList<T>> onNext) {
+        return db$.subscribe(onNext);
+    }
+    /**
+     * 
+     * @param onNext
+     * @param onError
+     * @return Disposable
+     */
+    public Disposable subscribe(Consumer<? super ArrayList<T>> onNext, Consumer<? super Throwable> onError) {
+        return db$.subscribe(onNext, onError);
+    }
+    /**
+     * 
+     * @param onNext
+     * @param onError
+     * @param onComplete
+     * @return Disposable
+     */
+    public Disposable subscribe(Consumer<? super ArrayList<T>> onNext, Consumer<? super Throwable> onError, Action onComplete) {
+        return db$.subscribe(onNext, onError, onComplete);
+    }
+    //</editor-fold>
 }

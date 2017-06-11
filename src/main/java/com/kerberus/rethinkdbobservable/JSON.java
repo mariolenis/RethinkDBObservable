@@ -2,11 +2,9 @@ package com.kerberus.rethinkdbobservable;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.internal.LinkedTreeMap;
 import com.google.gson.reflect.TypeToken;
 import java.lang.reflect.Type;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -37,9 +35,26 @@ public class JSON {
      * @return Map<String, T>
      */
     //<editor-fold defaultstate="collapsed" desc="static <T> T parseStringToGenericMap(String jsonString)">
-    public static <T> Map<String, T> parseStringToGenericMap(String jsonString) {
+    public static <T> Map<String, T> parseStringToGenericMap(String jsonString, Class parseClass) {
         Gson gson = new GsonBuilder().create();
-        return gson.fromJson(jsonString, new TypeToken<Map<String, T>>(){}.getType());
+        
+        Map<String, LinkedTreeMap> map = gson.fromJson(jsonString, new TypeToken<Map<String, LinkedTreeMap>>(){}.getType());
+        Map<String, T> finalMap = new HashMap<>();
+
+        map.forEach((key, jsonThree) -> {
+            
+            if (jsonThree != null) {
+                Map<String, Object> _map = new HashMap<>();
+                jsonThree.forEach((k, v) -> {
+                    _map.put(String.valueOf(k), v);
+                });
+                finalMap.put(key, (T) gson.fromJson( gson.toJson(_map), parseClass) );
+            } 
+            else
+                finalMap.put(key, null);
+        });
+        
+        return finalMap;
     }
     //</editor-fold>
     
@@ -49,9 +64,21 @@ public class JSON {
      * @param jsonString
      * @return 
      */
-    public static <T> ArrayList<T> parseStringToArrayList(String jsonString) {
+    public static <T> ArrayList<T> parseStringToGenericArrayList(String jsonString, Class parseClass) {
         Gson gson = new GsonBuilder().create();
-        return gson.fromJson(jsonString, new TypeToken<ArrayList<T>>(){}.getType());
+        ArrayList<LinkedTreeMap> threeArray = gson.fromJson(jsonString, new TypeToken<ArrayList<LinkedTreeMap>>(){}.getType());
+        ArrayList<T> finalArray = new ArrayList<>();
+        
+        threeArray.forEach(jsonThree -> {
+            
+            Map<String, Object> _map = new HashMap<>();
+            jsonThree.forEach((key, value) -> {
+                _map.put(String.valueOf(key), value);
+            });
+            
+            finalArray.add((T)gson.fromJson( gson.toJson(_map) , parseClass));
+        });
+        return finalArray;
     }
     
     /**

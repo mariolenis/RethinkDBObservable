@@ -23,9 +23,12 @@ public class RethinkDBQuery {
     @Override
     public String toString() {
         Map<String, String> query = new HashMap<>();
-        query.put("limit", String.valueOf(limit));
-        query.put("orderBy", orderBy);
-        query.put("filter", JSON.parseMapToString(filter));
+        if (limit > -1)
+            query.put("limit", String.valueOf(limit));
+        if (orderBy != null)
+            query.put("orderBy", orderBy);
+        if (filter != null)
+            query.put("filter", JSON.parseMapToString(filter));
         
         Gson gson = new GsonBuilder().create();
         return gson.toJson(query);
