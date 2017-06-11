@@ -40,11 +40,13 @@ public class Test {
                     System.out.println("msg.get(0) = " + msg.get(0).toString());
             });
 
-        // Push new Data
+        // Create a new Message
         Message myMsg = new Message();
         myMsg.name = "Myself";
         myMsg.msg  = "Hi from RethinkDBObservable ReactiveX";
         myMsg.date = (new Date()).toString();
+
+        // Push new Data
         message.put(myMsg)
             .subscribe(System.out::println);
     }
