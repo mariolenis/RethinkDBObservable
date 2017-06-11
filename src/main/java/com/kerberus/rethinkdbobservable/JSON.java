@@ -18,57 +18,6 @@ import java.util.Map;
  */
 public class JSON {
     /**
-     * Función statica que toma un ResulSet y retorna una lista de Objetos
-     * @param resultSet ResultSet
-     * @param claseObjeto Class.class
-     * @return ArrayList Object
-     * @throws SQLException
-     * @throws ClassNotFoundException 
-     */
-    //<editor-fold defaultstate="collapsed" desc="static ArrayList parseResultSetToObjectList(ResultSet resultSet, Class clase) throws SQLException, ClassNotFoundException">
-    public static ArrayList parseResultSetToObjectList(ResultSet resultSet, Class claseObjeto) throws SQLException, ClassNotFoundException{
-        
-        Gson gson = new GsonBuilder().create();
-        ResultSetMetaData meta = resultSet.getMetaData();
-        ArrayList<Object> object = new ArrayList<>();
-        
-        while(resultSet.next()) {
-            Map<String, Object> mapaPropiedades = new HashMap<>();
-            for(int i=1; i <= meta.getColumnCount(); i++) {
-                mapaPropiedades.put(meta.getColumnName(i), resultSet.getObject(i));
-            }
-            String jsonStringObject = gson.toJson(mapaPropiedades);
-            object.add(gson.fromJson(jsonStringObject, claseObjeto));
-        }
-        return object;
-    }
-    //</editor-fold>
-    
-    /**
-     * Función statica que toma un ResulSet y retorna una lista de mapas
-     * @param resultSet ResultSet
-     * @return ArrayList Map
-     * @throws SQLException
-     * @throws ClassNotFoundException 
-     */
-    //<editor-fold defaultstate="collapsed" desc="static ArrayList parseResultSetToMapList(ResultSet resultSet) throws SQLException, ClassNotFoundException">
-    public static ArrayList parseResultSetToMapList(ResultSet resultSet) throws SQLException, ClassNotFoundException{
-        
-        ResultSetMetaData meta = resultSet.getMetaData();
-        ArrayList<Map<String, String>> object = new ArrayList<>();
-        
-        while(resultSet.next()) {
-            Map<String, String> mapa = new HashMap<>();
-            for(int i=1; i <= meta.getColumnCount(); i++) {
-                mapa.put(meta.getColumnName(i), resultSet.getString(i));
-            }
-            object.add(mapa);
-        }
-        return object;
-    }
-    //</editor-fold>
-    
-    /**
      * Función para parsear un objeto a partir de una cadena
      * @param jsonString String
      * @param parseClase Class.name()
@@ -82,27 +31,38 @@ public class JSON {
     //</editor-fold>
     
     /**
-     * Función para parsear una cadena a Map
+     * Función para convertir una cadena en un objeto T
+     * @param <T>
      * @param jsonString
-     * @return MAP String,String
+     * @return Map<String, T>
      */
-    //<editor-fold defaultstate="collapsed" desc="static Map<String, String> parseStringToMap(String jsonString)">
-    public static Map<String, String> parseStringToMap(String jsonString){
+    //<editor-fold defaultstate="collapsed" desc="static <T> T parseStringToGenericMap(String jsonString)">
+    public static <T> Map<String, T> parseStringToGenericMap(String jsonString) {
         Gson gson = new GsonBuilder().create();
-        return gson.fromJson(jsonString, (new TypeToken<Map<String, Object>>(){}).getType());
+        return gson.fromJson(jsonString, new TypeToken<Map<String, T>>(){}.getType());
     }
     //</editor-fold>
     
     /**
+     * Función para convertir una cadena en un ArrayList de T
+     * @param <T>
+     * @param jsonString
+     * @return 
+     */
+    public static <T> ArrayList<T> parseStringToArrayList(String jsonString) {
+        Gson gson = new GsonBuilder().create();
+        return gson.fromJson(jsonString, new TypeToken<ArrayList<T>>(){}.getType());
+    }
+    
+    /**
      * Función para parsear una cadena a Map
      * @param jsonString
-     * @param typeMap 
-     * @return MAP String,String
+     * @return Map<String, String>
      */
     //<editor-fold defaultstate="collapsed" desc="static Map<String, String> parseStringToMap(String jsonString)">
-    public static Map<String, String> parseStringToMap(String jsonString, Type typeMap){
+    public static Map<String, String> parseStringToMap(String jsonString){
         Gson gson = new GsonBuilder().create();
-        return gson.fromJson(jsonString, typeMap);
+        return gson.fromJson(jsonString, (new TypeToken<Map<String, String>>(){}).getType());
     }
     //</editor-fold>
     
@@ -111,10 +71,10 @@ public class JSON {
      * @param jsonString String
      * @return List Map
      */
-    //<editor-fold defaultstate="collapsed" desc="static List<Map<String, String>> parseStringToListMap(String jsonString)">
-    public static List<Map<String, String>> parseStringToListMap(String jsonString){
+    //<editor-fold defaultstate="collapsed" desc="static <T> List<Map<String, T>> parseStringToListMap(String jsonString)">
+    public static <T> List<Map<String, T>> parseStringToListMap(String jsonString){
         Gson gson = new GsonBuilder().create();
-        return gson.fromJson(jsonString, (new TypeToken<List<Map<String, String>>>(){}).getType());
+        return gson.fromJson(jsonString, (new TypeToken<List<Map<String, T>>>(){}).getType());
     }
     //</editor-fold>
     
@@ -126,7 +86,7 @@ public class JSON {
     //<editor-fold defaultstate="collapsed" desc="static String parseMapToString(Map mapa)">
     public static String parseMapToString(Map mapa) {
         Gson gson = new GsonBuilder().create();
-        Type listType = new TypeToken<Map<String, Object>>(){}.getType();
+        Type listType = new TypeToken<Map<String, String>>(){}.getType();
         return gson.toJson(mapa, listType);
     }
     //</editor-fold>
