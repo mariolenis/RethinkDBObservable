@@ -103,6 +103,10 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
                         
                         String predata = String.valueOf(os[os.length - 1]);
                         System.out.println("predata = " + predata);
+                        Map<String, T> data = JSON.<T>parseStringToGenericMap(predata);
+                        
+                        // TODO: Validate data
+                        
                         // Current state
                         ArrayList<T> db = db$.getValue();                        
                     }
@@ -150,8 +154,9 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
                     String predata = IOUtils.toString(is, "UTF-8"); 
                     System.out.println("predata = " + predata);
                     
-                    // TODO: Transform predata into ArrayList<T>
-                    // obs.onNext();
+                    ArrayList<T> dataResult = JSON.<T>parseStringToArrayList(predata);
+                    obs.onNext(dataResult);
+                    
                     client.close();
                     obs.onComplete();
                 } catch (UnsupportedEncodingException ex) {
