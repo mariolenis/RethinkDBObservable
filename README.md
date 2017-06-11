@@ -19,6 +19,7 @@ import java.util.Map;
 public class Test {
     
     public static void main(String[] args) {
+
         RethinkDBAPIConfig config = new RethinkDBAPIConfig();
         
         config.api_key = "AAAA-BBBB-CCCC-DDDD";
@@ -27,12 +28,25 @@ public class Test {
         config.host = "http://<your-ip>";
         config.port = <your-port>;
         
+        // Initialize your object from table, if does not exists, it will be created
+        // new (RethinkDBAPIConfig config, BehaviorSubject<IRethinkDBQuery> query$, MyClass.class)
         RethinkDBObservable<Message> message = new RethinkDBObservable(config, null, Message.class);
-        message.subscribe(msg -> {
-            System.out.println("msg = " + msg.toString());
-            if (msg.size() > 3)
-                System.out.println("msg.get(2) = " + msg.get(2).toString());
-        });
+
+        // Subscribe to your object and listen to data
+        message
+            .subscribe(msg -> {
+                System.out.println("msg.size() = " + msg.size());
+                if (msg.size() > 0)
+                    System.out.println("msg.get(0) = " + msg.get(0).toString());
+            });
+
+        // Push new Data
+        Message myMsg = new Message();
+        myMsg.name = "Myself";
+        myMsg.msg  = "Hi from RethinkDBObservable ReactiveX";
+        myMsg.date = (new Date()).toString();
+        message.put(myMsg)
+            .subscribe(System.out::println);
     }
 }
 
