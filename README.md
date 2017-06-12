@@ -49,14 +49,6 @@ public class Test {
         // Push new Data
         message.put(myMsg)
             .subscribe(System.out::println);
-
-        // Give some time of the main thread since RethinkDBObservable runs in Computational Thread
-        try {
-            Thread.sleep(3000);
-            System.out.println("End of Thread " + Thread.currentThread().getName());
-        } catch (InterruptedException ex) {
-            Logger.getLogger(Test.class.getName()).log(Level.SEVERE, null, ex);
-        }
     }
 }
 

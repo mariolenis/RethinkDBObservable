@@ -7,7 +7,6 @@ import io.reactivex.Observable;
 import io.reactivex.disposables.Disposable;
 import io.reactivex.functions.Action;
 import io.reactivex.functions.Consumer;
-import io.reactivex.schedulers.Schedulers;
 import io.reactivex.subjects.BehaviorSubject;
 import io.socket.client.Ack;
 import io.socket.client.IO;
@@ -37,7 +36,6 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
     private final Class parseableClass;
     
     private Observable<ArrayList<T>> queryObservable$;
-    private Disposable subscription;
     
     // TODO: Get clasd from Generic T
     public RethinkDBObservable( 
@@ -55,33 +53,25 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
             // Creates a namespace to listen events and populate db$ with new data triggered by filter observable            
             Socket socket = IO.socket(API_URL);
             
-            queryObservable$ = Observable.just(socket)
-                
-                // Change the Thread to computation
-                .observeOn(Schedulers.computation())
-                
-                // Connect to socket
-                .map(sck -> sck.connect())
+            queryObservable$ = Observable.just(socket.connect())
                 
                 // Join the socket to the room accoiding to query
                 .flatMap(sck -> initSocketIO(sck))
+                
+                // If gets disconnected and reconnected, emits error to retry initSocketIO()
+                .repeat()
                     
                 // Start the listener from backend, also if gets disconnected and reconnected, emits message to refresh the query
                 .flatMap(nsp -> listenFromBackend(nsp))
 
                 // If query$ has next value, will trigger a new query without modifying the subscription filter in backend
-                .flatMap(msg -> (query$ != null ? query$ : Observable.just(new RethinkDBQuery(-1, null, null))))
+                .flatMap(noinfo -> (query$ != null ? query$ : Observable.just(new RethinkDBQuery(-1, null, null))))
                     
                 // Register the change's listener
                 .switchMap(query -> registerListener(socket, query))
                     
                 // Executes the query 
                 .switchMap(query -> queryDB(query));
-            
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                if (subscription != null && !subscription.isDisposed())
-                    subscription.dispose();
-            }));
             
         } catch (URISyntaxException ex) {
             Logger.getLogger(RethinkDBObservable.class.getName()).log(Level.SEVERE, null, ex);
@@ -103,8 +93,15 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
                         o.onError(new Throwable("Unauthorized api_key"));
                     else
                         o.onNext(socket);
-                    o.onComplete();
                 }
+            });
+            
+            socket.on("reconnect", (Object... os) -> {
+                o.onComplete();
+            });
+            
+            socket.on("error", (Object... os) -> {
+                o.onComplete();
             });
         });
     }
@@ -114,13 +111,6 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
     private Observable<String> listenFromBackend(Socket nsp) {
         
         return Observable.create(o -> {
-            nsp.on("reconnect", new Emitter.Listener() {
-                @Override
-                public void call(Object... os) {
-                    o.onNext(String.valueOf(os[os.length - 1]));
-                }
-            });
-            
             nsp.on(config.table, new Emitter.Listener() {
                 @Override
                 public void call(Object... os) {
@@ -163,8 +153,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
             Map<String, String> changeConfig = new HashMap<>();
             changeConfig.put("db", config.database);
             changeConfig.put("table", config.table);
-            if (query != null)
-                changeConfig.put("query", query.toString());
+            changeConfig.put("query", query.toString());
             
             socket.emit("listenChanges", JSON.parseMapToString(changeConfig));
             obs.onNext(query);
@@ -319,26 +308,14 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
     }
     //</editor-fold>
         
-    //<editor-fold defaultstate="collapsed" desc="public Disposable subscribe(onNext, onError, onComplete)">
-    /**
-     * Starts the subscription
-     * @return Disposable
-     */
-    private Disposable initSubscriptionOnQueryListerner() {
-        return queryObservable$
-            // Append the result to the next BehaviorSubject Observer  
-            .subscribe(
-                data -> db$.onNext(data),
-                err -> System.err.println(err)
-            );
-    }
+    //<editor-fold defaultstate="collapsed" desc="public Disposable subscribe(onNext, onError, onComplete)">    
     /**
      * 
      * @param onNext
      * @return Disposable
      */
     public Disposable subscribe(Consumer<? super ArrayList<T>> onNext) {
-        subscription = initSubscriptionOnQueryListerner();
+        queryObservable$.subscribe(result -> db$.onNext(result));
         return db$.subscribe(onNext);
     }
     /**
@@ -348,7 +325,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
      * @return Disposable
      */
     public Disposable subscribe(Consumer<? super ArrayList<T>> onNext, Consumer<? super Throwable> onError) {
-        subscription = initSubscriptionOnQueryListerner();
+        queryObservable$.subscribe(result -> db$.onNext(result));
         return db$.subscribe(onNext, onError);
     }
     /**
@@ -359,7 +336,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
      * @return Disposable
      */
     public Disposable subscribe(Consumer<? super ArrayList<T>> onNext, Consumer<? super Throwable> onError, Action onComplete) {
-        subscription = initSubscriptionOnQueryListerner();
+        queryObservable$.subscribe(result -> db$.onNext(result));
         return db$.subscribe(onNext, onError, onComplete);
     }
     //</editor-fold>
