@@ -36,7 +36,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
     private final RethinkDBAPIConfig config;
     private final Class parseableClass;
     
-    private Observable queryListener$;
+    private Observable<ArrayList<T>> queryObservable$;
     private Disposable subscription;
     
     // TODO: Get clasd from Generic T
@@ -55,7 +55,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
             // Creates a namespace to listen events and populate db$ with new data triggered by filter observable            
             Socket socket = IO.socket(API_URL);
             
-            queryListener$ = Observable.just(socket)
+            queryObservable$ = Observable.just(socket)
                 
                 // Change the Thread to computation
                 .observeOn(Schedulers.computation())
@@ -325,10 +325,10 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
      * @return Disposable
      */
     private Disposable initSubscriptionOnQueryListerner() {
-        return queryListener$
+        return queryObservable$
             // Append the result to the next BehaviorSubject Observer  
             .subscribe(
-                data -> db$.onNext((ArrayList<T>) data),
+                data -> db$.onNext(data),
                 err -> System.err.println(err)
             );
     }
