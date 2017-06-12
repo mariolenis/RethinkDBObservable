@@ -7,6 +7,7 @@ import io.reactivex.Observable;
 import io.reactivex.disposables.Disposable;
 import io.reactivex.functions.Action;
 import io.reactivex.functions.Consumer;
+import io.reactivex.schedulers.Schedulers;
 import io.reactivex.subjects.BehaviorSubject;
 import io.socket.client.Ack;
 import io.socket.client.IO;
@@ -35,6 +36,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
     private final RethinkDBAPIConfig config;
     private final Class parseableClass;
     
+    private Observable listener$;
     private Disposable subscription;
     
     // TODO: Get clasd from Generic T
@@ -51,9 +53,18 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
         
         try {
             // Creates a namespace to listen events and populate db$ with new data triggered by filter observable            
-            Socket socket = IO.socket(API_URL).connect();
+            Socket socket = IO.socket(API_URL);
             
-            subscription = initSocketIO(socket)
+            listener$ = Observable.just(socket)
+                
+                // Change the Thread to computation
+                .observeOn(Schedulers.computation())
+                
+                // Connect to socket
+                .map(sck -> sck.connect())
+                
+                // Join the socket to the room accoiding to query
+                .flatMap(sck -> initSocketIO(sck))
                     
                 // Start the listener from backend, also if gets disconnected and reconnected, emits message to refresh the query
                 .flatMap(nsp -> listenFromBackend(nsp))
@@ -65,13 +76,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
                 .switchMap(query -> registerListener(socket, query))
                     
                 // Executes the query 
-                .switchMap(query -> queryDB(query))
-                    
-                // Append the result to the next BehaviorSubject Observer  
-                .subscribe(
-                        data -> db$.onNext(data),
-                        err -> System.err.println(err)
-                );
+                .switchMap(query -> queryDB(query));
             
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 if (subscription != null && !subscription.isDisposed())
@@ -81,7 +86,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
         } catch (URISyntaxException ex) {
             Logger.getLogger(RethinkDBObservable.class.getName()).log(Level.SEVERE, null, ex);
         }
-    }    
+    }
     
     //<editor-fold defaultstate="collapsed" desc="private Observable<Socket> initSocketIO(Socket socket)">
     private Observable<Socket> initSocketIO(Socket socket) {
@@ -316,11 +321,24 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
         
     //<editor-fold defaultstate="collapsed" desc="public Disposable subscribe(onNext, onError, onComplete)">
     /**
+     * Starts the subscription
+     * @return Disposable
+     */
+    private Disposable initSubscription() {
+        return listener$
+            // Append the result to the next BehaviorSubject Observer  
+            .subscribe(
+                data -> db$.onNext((ArrayList<T>) data),
+                err -> System.err.println(err)
+            );
+    }
+    /**
      * 
      * @param onNext
      * @return Disposable
      */
     public Disposable subscribe(Consumer<? super ArrayList<T>> onNext) {
+        subscription = initSubscription();
         return db$.subscribe(onNext);
     }
     /**
@@ -330,6 +348,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
      * @return Disposable
      */
     public Disposable subscribe(Consumer<? super ArrayList<T>> onNext, Consumer<? super Throwable> onError) {
+        subscription = initSubscription();
         return db$.subscribe(onNext, onError);
     }
     /**
@@ -340,6 +359,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
      * @return Disposable
      */
     public Disposable subscribe(Consumer<? super ArrayList<T>> onNext, Consumer<? super Throwable> onError, Action onComplete) {
+        subscription = initSubscription();
         return db$.subscribe(onNext, onError, onComplete);
     }
     //</editor-fold>
