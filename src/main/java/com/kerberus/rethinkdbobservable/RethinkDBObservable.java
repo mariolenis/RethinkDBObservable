@@ -91,6 +91,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
                         o.onError(new Exception("Unauthorized api_key " + localConfig.get("api_key")));
                     else
                         o.onNext(socket);
+                    o.onComplete();
                 }
             });
             
