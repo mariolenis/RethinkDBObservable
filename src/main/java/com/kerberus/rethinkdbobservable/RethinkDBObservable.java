@@ -88,7 +88,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
                 @Override
                 public void call(Object... args) {
                     if (String.valueOf(args[args.length - 1]).contains("err"))
-                        o.onError(new Exception("Unauthorized api_key"));
+                        o.onError(new Exception("Unauthorized api_key " + localConfig.get("api_key")));
                     else
                         o.onNext(socket);
                 }
