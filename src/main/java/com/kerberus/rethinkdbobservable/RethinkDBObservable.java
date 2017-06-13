@@ -55,7 +55,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
             
             queryObservable$ = Observable.just(socket.connect())
                 
-                // Join the socket to the room accoiding to query
+                // Validate the connection
                 .flatMap(sck -> validateConnectionCredentials(sck))
                     
                 // Start the listener from backend, also if gets disconnected and reconnected, emits message to refresh the query
