@@ -310,7 +310,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
      * @return Disposable
      */
     public Disposable subscribe(Consumer<? super ArrayList<T>> onNext) {
-        queryObservable$.subscribe(result -> db$.onNext(result));
+        queryObservable$.subscribe(result -> db$.onNext(result), err -> db$.onError(err));
         return db$.subscribe(onNext);
     }
     /**
@@ -320,7 +320,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
      * @return Disposable
      */
     public Disposable subscribe(Consumer<? super ArrayList<T>> onNext, Consumer<? super Throwable> onError) {
-        queryObservable$.subscribe(result -> db$.onNext(result));
+        queryObservable$.subscribe(result -> db$.onNext(result), err -> db$.onError(err));
         return db$.subscribe(onNext, onError);
     }
     /**
@@ -331,7 +331,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
      * @return Disposable
      */
     public Disposable subscribe(Consumer<? super ArrayList<T>> onNext, Consumer<? super Throwable> onError, Action onComplete) {
-        queryObservable$.subscribe(result -> db$.onNext(result));
+        queryObservable$.subscribe(result -> db$.onNext(result), err -> db$.onError(err));
         return db$.subscribe(onNext, onError, onComplete);
     }
     //</editor-fold>
