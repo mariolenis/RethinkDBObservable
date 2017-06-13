@@ -4,7 +4,7 @@ RethinkDB Observable class for realtime database in java
 ## Usage
 Here is a simple demo
 ### Module 1st
-In order to use this, you will need to build a backend seervice for RethinkDB, __or__ you might use this one 
+In order to use this, you will need to build a backend service for RethinkDB, __or__ you might use this one 
 https://github.com/mariolenis/rethinkdb-daas
 
 ```java
