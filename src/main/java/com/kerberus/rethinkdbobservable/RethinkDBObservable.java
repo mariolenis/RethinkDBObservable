@@ -56,10 +56,7 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
             queryObservable$ = Observable.just(socket.connect())
                 
                 // Join the socket to the room accoiding to query
-                .flatMap(sck -> initSocketIO(sck))
-                
-                // If gets disconnected and reconnected, emits error to retry initSocketIO()
-                .repeat()
+                .flatMap(sck -> validateConnectionCredentials(sck))
                     
                 // Start the listener from backend, also if gets disconnected and reconnected, emits message to refresh the query
                 .flatMap(nsp -> listenFromBackend(nsp))
@@ -78,15 +75,16 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
         }
     }
     
-    //<editor-fold defaultstate="collapsed" desc="private Observable<Socket> initSocketIO(Socket socket)">
-    private Observable<Socket> initSocketIO(Socket socket) {
+    //<editor-fold defaultstate="collapsed" desc="private Observable<Socket> validateConnectionCredentials(Socket socket)">
+    private Observable<Socket> validateConnectionCredentials(Socket socket) {
         return Observable.create(o -> {
+            
             Map localConfig = new HashMap();
             localConfig.put("db", config.database);
             localConfig.put("table", config.table);
             localConfig.put("api_key", config.api_key);
             
-            socket.emit("join", JSON.parseMapToString(localConfig), new Ack() {
+            socket.emit("validate", JSON.parseMapToString(localConfig), new Ack() {
                 @Override
                 public void call(Object... args) {
                     if (String.valueOf(args[args.length - 1]).contains("err"))
@@ -96,13 +94,6 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
                 }
             });
             
-            socket.on("reconnect", (Object... os) -> {
-                o.onComplete();
-            });
-            
-            socket.on("error", (Object... os) -> {
-                o.onComplete();
-            });
         });
     }
     //</editor-fold>
@@ -140,6 +131,10 @@ public class RethinkDBObservable<T extends RethinkDBObject> {
                         db$.onNext(db);
                     }
                 }
+            });
+            
+            nsp.on("reconnect", (Object... os) -> {
+                o.onNext("Reconnect");
             });
             
             o.onNext("Start");            
